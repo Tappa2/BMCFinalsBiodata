@@ -1,20 +1,12 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'firebase_options.dart';
-
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
   runApp(const BioDataApp());
 }
 
@@ -25,13 +17,13 @@ class BioDataApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Bio-Data',
+      title: 'BIO-DATA',
       theme: ThemeData(
         useMaterial3: true,
+        fontFamily: 'Arial',
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF173F5F),
         ),
-        fontFamily: 'Arial',
       ),
       home: const BioDataPage(),
     );
@@ -46,8 +38,6 @@ class BioDataPage extends StatefulWidget {
 }
 
 class _BioDataPageState extends State<BioDataPage> {
-  final _formKey = GlobalKey<FormState>();
-
   final fullNameController = TextEditingController();
   final birthDateController = TextEditingController();
   final ageController = TextEditingController();
@@ -55,11 +45,11 @@ class _BioDataPageState extends State<BioDataPage> {
   final nationalityController = TextEditingController();
   final religionController = TextEditingController();
   final emailController = TextEditingController();
-  final contactController = TextEditingController();
+  final contactNumberController = TextEditingController();
   final addressController = TextEditingController();
 
   final elementaryController = TextEditingController();
-  final seniorHighController = TextEditingController();
+  final seniorHighSchoolController = TextEditingController();
   final collegeController = TextEditingController();
   final courseController = TextEditingController();
 
@@ -67,104 +57,129 @@ class _BioDataPageState extends State<BioDataPage> {
 
   final positionController = TextEditingController();
   final companyController = TextEditingController();
-  final workYearsController = TextEditingController();
+  final yearsController = TextEditingController();
 
   final certificationController = TextEditingController();
   final signatureController = TextEditingController();
 
-  final ImagePicker picker = ImagePicker();
+  Uint8List? profileImage;
 
-  Uint8List? imageBytes;
-  String? imageName;
+  final ImagePicker imagePicker = ImagePicker();
 
+  bool isLoading = true;
   bool isSaving = false;
 
   @override
-  void dispose() {
-    fullNameController.dispose();
-    birthDateController.dispose();
-    ageController.dispose();
-    civilStatusController.dispose();
-    nationalityController.dispose();
-    religionController.dispose();
-    emailController.dispose();
-    contactController.dispose();
-    addressController.dispose();
+  void initState() {
+    super.initState();
+    loadData();
+  }
 
-    elementaryController.dispose();
-    seniorHighController.dispose();
-    collegeController.dispose();
-    courseController.dispose();
+  Future<void> loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    skillsController.dispose();
+      fullNameController.text = prefs.getString('fullName') ?? '';
+      birthDateController.text = prefs.getString('birthDate') ?? '';
+      ageController.text = prefs.getString('age') ?? '';
+      civilStatusController.text =
+          prefs.getString('civilStatus') ?? '';
+      nationalityController.text =
+          prefs.getString('nationality') ?? '';
+      religionController.text = prefs.getString('religion') ?? '';
+      emailController.text = prefs.getString('email') ?? '';
+      contactNumberController.text =
+          prefs.getString('contactNumber') ?? '';
+      addressController.text = prefs.getString('address') ?? '';
 
-    positionController.dispose();
-    companyController.dispose();
-    workYearsController.dispose();
+      elementaryController.text =
+          prefs.getString('elementary') ?? '';
+      seniorHighSchoolController.text =
+          prefs.getString('seniorHighSchool') ?? '';
+      collegeController.text = prefs.getString('college') ?? '';
+      courseController.text = prefs.getString('course') ?? '';
 
-    certificationController.dispose();
-    signatureController.dispose();
+      skillsController.text = prefs.getString('skills') ?? '';
 
-    super.dispose();
+      positionController.text =
+          prefs.getString('position') ?? '';
+      companyController.text =
+          prefs.getString('company') ?? '';
+      yearsController.text = prefs.getString('years') ?? '';
+
+      certificationController.text =
+          prefs.getString('certification') ?? '';
+      signatureController.text =
+          prefs.getString('signature') ?? '';
+
+      final savedImage = prefs.getString('profileImage');
+
+      if (savedImage != null && savedImage.isNotEmpty) {
+        try {
+          profileImage = base64Decode(savedImage);
+        } catch (_) {
+          profileImage = null;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+
+        showMessage(
+          'Failed to load saved data.',
+          false,
+        );
+      }
+    }
   }
 
   Future<void> pickProfilePicture() async {
     try {
-      final XFile? image = await picker.pickImage(
+      final XFile? image = await imagePicker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 1200,
         maxHeight: 1200,
-        imageQuality: 85,
+        imageQuality: 80,
       );
 
-      if (image == null) return;
+      if (image == null) {
+        return;
+      }
 
       final bytes = await image.readAsBytes();
 
+      if (!mounted) return;
+
       setState(() {
-        imageBytes = bytes;
-        imageName = image.name;
+        profileImage = bytes;
       });
+
+      showMessage(
+        'Profile picture selected.',
+        true,
+      );
     } catch (e) {
-      showMessage('Unable to select picture.');
+      showMessage(
+        'Unable to select picture.',
+        false,
+      );
     }
-  }
-
-  Future<String?> uploadProfilePicture() async {
-    if (imageBytes == null) return null;
-
-    final safeName = imageName ?? 'profile.jpg';
-    final fileName =
-        '${DateTime.now().millisecondsSinceEpoch}_$safeName';
-
-    final storageRef = FirebaseStorage.instance
-        .ref()
-        .child('profile_pictures')
-        .child(fileName);
-
-    String contentType = 'image/jpeg';
-
-    final lowerName = safeName.toLowerCase();
-
-    if (lowerName.endsWith('.png')) {
-      contentType = 'image/png';
-    } else if (lowerName.endsWith('.webp')) {
-      contentType = 'image/webp';
-    }
-
-    await storageRef.putData(
-      imageBytes!,
-      SettableMetadata(
-        contentType: contentType,
-      ),
-    );
-
-    return await storageRef.getDownloadURL();
   }
 
   Future<void> saveData() async {
-    if (!_formKey.currentState!.validate()) {
-      showMessage('Please fill in the required fields.');
+    if (fullNameController.text.trim().isEmpty) {
+      showMessage(
+        'Please enter your full name.',
+        false,
+      );
       return;
     }
 
@@ -173,148 +188,282 @@ class _BioDataPageState extends State<BioDataPage> {
     });
 
     try {
-      String? imageUrl;
+      final prefs = await SharedPreferences.getInstance();
 
-      if (imageBytes != null) {
-        imageUrl = await uploadProfilePicture();
+      await prefs.setString(
+        'fullName',
+        fullNameController.text.trim(),
+      );
+
+      await prefs.setString(
+        'birthDate',
+        birthDateController.text.trim(),
+      );
+
+      await prefs.setString(
+        'age',
+        ageController.text.trim(),
+      );
+
+      await prefs.setString(
+        'civilStatus',
+        civilStatusController.text.trim(),
+      );
+
+      await prefs.setString(
+        'nationality',
+        nationalityController.text.trim(),
+      );
+
+      await prefs.setString(
+        'religion',
+        religionController.text.trim(),
+      );
+
+      await prefs.setString(
+        'email',
+        emailController.text.trim(),
+      );
+
+      await prefs.setString(
+        'contactNumber',
+        contactNumberController.text.trim(),
+      );
+
+      await prefs.setString(
+        'address',
+        addressController.text.trim(),
+      );
+
+      await prefs.setString(
+        'elementary',
+        elementaryController.text.trim(),
+      );
+
+      await prefs.setString(
+        'seniorHighSchool',
+        seniorHighSchoolController.text.trim(),
+      );
+
+      await prefs.setString(
+        'college',
+        collegeController.text.trim(),
+      );
+
+      await prefs.setString(
+        'course',
+        courseController.text.trim(),
+      );
+
+      await prefs.setString(
+        'skills',
+        skillsController.text.trim(),
+      );
+
+      await prefs.setString(
+        'position',
+        positionController.text.trim(),
+      );
+
+      await prefs.setString(
+        'company',
+        companyController.text.trim(),
+      );
+
+      await prefs.setString(
+        'years',
+        yearsController.text.trim(),
+      );
+
+      await prefs.setString(
+        'certification',
+        certificationController.text.trim(),
+      );
+
+      await prefs.setString(
+        'signature',
+        signatureController.text.trim(),
+      );
+
+      if (profileImage != null) {
+        await prefs.setString(
+          'profileImage',
+          base64Encode(profileImage!),
+        );
       }
 
-      await FirebaseFirestore.instance.collection('biodata').add({
-        'fullName': fullNameController.text.trim(),
-        'birthDate': birthDateController.text.trim(),
-        'age': ageController.text.trim(),
-        'civilStatus': civilStatusController.text.trim(),
-        'nationality': nationalityController.text.trim(),
-        'religion': religionController.text.trim(),
-        'email': emailController.text.trim(),
-        'contactNumber': contactController.text.trim(),
-        'address': addressController.text.trim(),
-
-        'education': {
-          'elementary': elementaryController.text.trim(),
-          'seniorHighSchool': seniorHighController.text.trim(),
-          'college': collegeController.text.trim(),
-          'course': courseController.text.trim(),
-        },
-
-        'skills': skillsController.text.trim(),
-
-        'workExperience': {
-          'position': positionController.text.trim(),
-          'company': companyController.text.trim(),
-          'years': workYearsController.text.trim(),
-        },
-
-        'certification': certificationController.text.trim(),
-        'signature': signatureController.text.trim(),
-
-        'profileImageUrl': imageUrl,
-
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!mounted) return;
-
-      showMessage(
-        'Bio-data saved successfully!',
-        success: true,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      showMessage(
-        'Failed to save data. Check your Firebase settings.',
-      );
-    } finally {
       if (mounted) {
         setState(() {
           isSaving = false;
         });
       }
+
+      showMessage(
+        'Bio-Data saved successfully!',
+        true,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
+
+      showMessage(
+        'Failed to save data.',
+        false,
+      );
     }
   }
 
-  void clearForm() {
-    fullNameController.clear();
-    birthDateController.clear();
-    ageController.clear();
-    civilStatusController.clear();
-    nationalityController.clear();
-    religionController.clear();
-    emailController.clear();
-    contactController.clear();
-    addressController.clear();
+  Future<void> clearData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Clear Bio-Data'),
+          content: const Text(
+            'Are you sure you want to delete all saved information?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Clear'),
+            ),
+          ],
+        );
+      },
+    );
 
-    elementaryController.clear();
-    seniorHighController.clear();
-    collegeController.clear();
-    courseController.clear();
+    if (confirmed != true) {
+      return;
+    }
 
-    skillsController.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    positionController.clear();
-    companyController.clear();
-    workYearsController.clear();
+      await prefs.clear();
 
-    certificationController.clear();
-    signatureController.clear();
+      fullNameController.clear();
+      birthDateController.clear();
+      ageController.clear();
+      civilStatusController.clear();
+      nationalityController.clear();
+      religionController.clear();
+      emailController.clear();
+      contactNumberController.clear();
+      addressController.clear();
+
+      elementaryController.clear();
+      seniorHighSchoolController.clear();
+      collegeController.clear();
+      courseController.clear();
+
+      skillsController.clear();
+
+      positionController.clear();
+      companyController.clear();
+      yearsController.clear();
+
+      certificationController.clear();
+      signatureController.clear();
+
+      setState(() {
+        profileImage = null;
+      });
+
+      showMessage(
+        'All saved data has been deleted.',
+        true,
+      );
+    } catch (e) {
+      showMessage(
+        'Failed to clear data.',
+        false,
+      );
+    }
+  }
+
+  Future<void> selectBirthDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+    );
+
+    if (selected == null) {
+      return;
+    }
+
+    final day = selected.day.toString().padLeft(2, '0');
+    final month = selected.month.toString().padLeft(2, '0');
+    final year = selected.year.toString();
 
     setState(() {
-      imageBytes = null;
-      imageName = null;
+      birthDateController.text = '$day/$month/$year';
     });
 
-    showMessage('Form cleared.');
+    final now = DateTime.now();
+
+    int age = now.year - selected.year;
+
+    if (now.month < selected.month ||
+        (now.month == selected.month &&
+            now.day < selected.day)) {
+      age--;
+    }
+
+    ageController.text = age.toString();
   }
 
   void showMessage(
-    String message, {
-    bool success = false,
-  }) {
+    String message,
+    bool success,
+  ) {
     if (!mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
       ),
     );
   }
 
-  Widget sectionTitle(
-    String title,
-    IconData icon,
-  ) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(
+  Widget sectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(
         top: 25,
         bottom: 15,
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 11,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFDCEAF5),
-        borderRadius: BorderRadius.circular(8),
-      ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: const Color(0xFF173F5F),
+          Container(
+            width: 5,
+            height: 27,
+            decoration: BoxDecoration(
+              color: const Color(0xFF173F5F),
+              borderRadius: BorderRadius.circular(5),
+            ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: Color(0xFF173F5F),
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF173F5F),
             ),
           ),
         ],
@@ -325,133 +474,126 @@ class _BioDataPageState extends State<BioDataPage> {
   Widget textField(
     String label,
     TextEditingController controller, {
-    bool required = false,
-    TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
+    bool readOnly = false,
+    VoidCallback? onTap,
     String? hint,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: TextFormField(
+      child: TextField(
         controller: controller,
-        keyboardType: keyboardType,
         maxLines: maxLines,
+        keyboardType: keyboardType,
+        readOnly: readOnly,
+        onTap: onTap,
         decoration: InputDecoration(
-          labelText: required ? '$label *' : label,
+          labelText: label,
           hintText: hint,
+          filled: true,
+          fillColor: Colors.white,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide(
-              color: Colors.grey.shade400,
+              color: Colors.grey.shade300,
             ),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(
               color: Color(0xFF173F5F),
               width: 2,
             ),
           ),
-          filled: true,
-          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 15,
+          ),
         ),
-        validator: required
-            ? (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return '$label is required';
-                }
-                return null;
-              }
-            : null,
       ),
     );
   }
 
   Widget responsiveTwoColumns(
     BuildContext context,
-    List<Widget> children,
+    Widget left,
+    Widget right,
   ) {
     final width = MediaQuery.of(context).size.width;
 
-    if (width < 700) {
-      return Column(
-        children: children,
+    if (width >= 700) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 7),
+              child: left,
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 7),
+              child: right,
+            ),
+          ),
+        ],
       );
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        Expanded(
-          child: children[0],
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: children[1],
-        ),
+        left,
+        right,
       ],
     );
   }
 
   Widget profilePicture() {
-    return Center(
-      child: Column(
-        children: [
-          Container(
-            width: 150,
-            height: 150,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F4F7),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: const Color(0xFF173F5F),
-                width: 2,
-              ),
+    return Column(
+      children: [
+        Container(
+          width: 150,
+          height: 150,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.grey.shade300,
+              width: 1.5,
             ),
-            child: imageBytes != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.memory(
-                      imageBytes!,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                : const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.person,
-                        size: 65,
-                        color: Colors.grey,
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        'No Picture',
-                        style: TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
           ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: pickProfilePicture,
-            icon: const Icon(Icons.upload),
-            label: const Text('Upload Picture'),
-          ),
-        ],
-      ),
+          clipBehavior: Clip.antiAlias,
+          child: profileImage != null
+              ? Image.memory(
+                  profileImage!,
+                  fit: BoxFit.cover,
+                )
+              : const Icon(
+                  Icons.person,
+                  size: 80,
+                  color: Colors.grey,
+                ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: pickProfilePicture,
+          icon: const Icon(Icons.photo_library),
+          label: const Text('Upload Picture'),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F8),
+      backgroundColor: const Color(0xFFE9EDF1),
       appBar: AppBar(
         backgroundColor: const Color(0xFF173F5F),
         foregroundColor: Colors.white,
@@ -460,377 +602,302 @@ class _BioDataPageState extends State<BioDataPage> {
           'BIO-DATA',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            letterSpacing: 1,
+            letterSpacing: 1.5,
           ),
         ),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 1000,
-            ),
-            child: Card(
-              elevation: 4,
-              color: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      const Center(
-                        child: Text(
-                          'PERSONAL BIO-DATA FORM',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF173F5F),
-                          ),
-                        ),
-                      ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 1000,
+                    ),
+                    child: Card(
+                      elevation: 3,
+                      color: const Color(0xFFF4F6F8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.stretch,
+                          children: [
+                            Center(
+                              child: profilePicture(),
+                            ),
 
-                      const SizedBox(height: 8),
+                            sectionTitle(
+                              'Personal Information',
+                            ),
 
-                      const Center(
-                        child: Text(
-                          'Please complete all required information.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
+                            textField(
+                              'Full Name *',
+                              fullNameController,
+                              hint: 'Enter your full name',
+                            ),
 
-                      const SizedBox(height: 25),
+                            responsiveTwoColumns(
+                              context,
+                              textField(
+                                'Birth Date',
+                                birthDateController,
+                                readOnly: true,
+                                onTap: selectBirthDate,
+                                hint: 'DD/MM/YYYY',
+                              ),
+                              textField(
+                                'Age',
+                                ageController,
+                                keyboardType:
+                                    TextInputType.number,
+                              ),
+                            ),
 
-                      profilePicture(),
+                            responsiveTwoColumns(
+                              context,
+                              textField(
+                                'Civil Status',
+                                civilStatusController,
+                                hint: 'Single / Married',
+                              ),
+                              textField(
+                                'Nationality',
+                                nationalityController,
+                                hint: 'Filipino',
+                              ),
+                            ),
 
-                      sectionTitle(
-                        'Personal Information',
-                        Icons.person,
-                      ),
+                            responsiveTwoColumns(
+                              context,
+                              textField(
+                                'Religion',
+                                religionController,
+                              ),
+                              textField(
+                                'Email',
+                                emailController,
+                                keyboardType:
+                                    TextInputType.emailAddress,
+                              ),
+                            ),
 
-                      responsiveTwoColumns(
-                        context,
-                        [
-                          textField(
-                            'Full Name',
-                            fullNameController,
-                            required: true,
-                          ),
-                          textField(
-                            'Date of Birth',
-                            birthDateController,
-                            hint: 'MM/DD/YYYY',
-                          ),
-                        ],
-                      ),
+                            responsiveTwoColumns(
+                              context,
+                              textField(
+                                'Contact Number',
+                                contactNumberController,
+                                keyboardType:
+                                    TextInputType.phone,
+                              ),
+                              textField(
+                                'Address',
+                                addressController,
+                              ),
+                            ),
 
-                      responsiveTwoColumns(
-                        context,
-                        [
-                          textField(
-                            'Age',
-                            ageController,
-                            keyboardType:
-                                TextInputType.number,
-                          ),
-                          textField(
-                            'Civil Status',
-                            civilStatusController,
-                          ),
-                        ],
-                      ),
+                            sectionTitle(
+                              'Educational Background',
+                            ),
 
-                      responsiveTwoColumns(
-                        context,
-                        [
-                          textField(
-                            'Nationality',
-                            nationalityController,
-                          ),
-                          textField(
-                            'Religion',
-                            religionController,
-                          ),
-                        ],
-                      ),
+                            responsiveTwoColumns(
+                              context,
+                              textField(
+                                'Elementary',
+                                elementaryController,
+                              ),
+                              textField(
+                                'Senior High School',
+                                seniorHighSchoolController,
+                              ),
+                            ),
 
-                      responsiveTwoColumns(
-                        context,
-                        [
-                          textField(
-                            'Email Address',
-                            emailController,
-                            keyboardType:
-                                TextInputType.emailAddress,
-                          ),
-                          textField(
-                            'Contact Number',
-                            contactController,
-                            keyboardType:
-                                TextInputType.phone,
-                          ),
-                        ],
-                      ),
+                            responsiveTwoColumns(
+                              context,
+                              textField(
+                                'College',
+                                collegeController,
+                              ),
+                              textField(
+                                'Course / Degree',
+                                courseController,
+                              ),
+                            ),
 
-                      textField(
-                        'Complete Address',
-                        addressController,
-                        maxLines: 2,
-                      ),
+                            sectionTitle('Skills'),
 
-                      sectionTitle(
-                        'Educational Background',
-                        Icons.school,
-                      ),
+                            textField(
+                              'Skills',
+                              skillsController,
+                              maxLines: 4,
+                              hint:
+                                  'Communication, Leadership, Computer Skills, etc.',
+                            ),
 
-                      responsiveTwoColumns(
-                        context,
-                        [
-                          textField(
-                            'Elementary School',
-                            elementaryController,
-                          ),
-                          textField(
-                            'Senior High School',
-                            seniorHighController,
-                          ),
-                        ],
-                      ),
+                            sectionTitle(
+                              'Work Experience',
+                            ),
 
-                      responsiveTwoColumns(
-                        context,
-                        [
-                          textField(
-                            'College / University',
-                            collegeController,
-                          ),
-                          textField(
-                            'Course / Program',
-                            courseController,
-                          ),
-                        ],
-                      ),
+                            responsiveTwoColumns(
+                              context,
+                              textField(
+                                'Position',
+                                positionController,
+                              ),
+                              textField(
+                                'Company',
+                                companyController,
+                              ),
+                            ),
 
-                      sectionTitle(
-                        'Skills',
-                        Icons.star,
-                      ),
+                            textField(
+                              'Years of Experience',
+                              yearsController,
+                              keyboardType:
+                                  TextInputType.number,
+                            ),
 
-                      textField(
-                        'Skills',
-                        skillsController,
-                        maxLines: 4,
-                        hint:
-                            'Example: Programming, Communication, Teamwork',
-                      ),
+                            sectionTitle(
+                              'Certification / Signature',
+                            ),
 
-                      sectionTitle(
-                        'Work Experience',
-                        Icons.work,
-                      ),
+                            textField(
+                              'Certification',
+                              certificationController,
+                              maxLines: 4,
+                            ),
 
-                      responsiveTwoColumns(
-                        context,
-                        [
-                          textField(
-                            'Position / Job Title',
-                            positionController,
-                          ),
-                          textField(
-                            'Company / Organization',
-                            companyController,
-                          ),
-                        ],
-                      ),
+                            textField(
+                              'Signature',
+                              signatureController,
+                              hint: 'Type your full name',
+                            ),
 
-                      textField(
-                        'Years of Experience',
-                        workYearsController,
-                      ),
+                            const SizedBox(height: 15),
 
-                      sectionTitle(
-                        'Certification / Signature',
-                        Icons.verified,
-                      ),
-
-                      textField(
-                        'Certification',
-                        certificationController,
-                        maxLines: 2,
-                      ),
-
-                      textField(
-                        'Signature / Full Name',
-                        signatureController,
-                      ),
-
-                      const SizedBox(height: 25),
-
-                      const Divider(),
-
-                      const SizedBox(height: 20),
-
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          if (constraints.maxWidth < 500) {
-                            return Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.stretch,
+                            Row(
                               children: [
-                                ElevatedButton.icon(
-                                  onPressed:
-                                      isSaving
-                                          ? null
-                                          : saveData,
-                                  icon: isSaving
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child:
-                                              CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color:
-                                                Colors.white,
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed:
+                                        isSaving
+                                            ? null
+                                            : saveData,
+                                    icon: isSaving
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.save,
                                           ),
-                                        )
-                                      : const Icon(
-                                          Icons.save,
-                                        ),
-                                  label: Text(
-                                    isSaving
-                                        ? 'Saving...'
-                                        : 'SAVE DATA',
-                                  ),
-                                  style:
-                                      ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        const Color(
-                                      0xFF173F5F,
+                                    label: Text(
+                                      isSaving
+                                          ? 'Saving...'
+                                          : 'Save Data',
                                     ),
-                                    foregroundColor:
-                                        Colors.white,
-                                    padding:
-                                        const EdgeInsets
-                                            .symmetric(
-                                      vertical: 15,
+                                    style:
+                                        FilledButton.styleFrom(
+                                      backgroundColor:
+                                          const Color(0xFF173F5F),
+                                      foregroundColor:
+                                          Colors.white,
+                                      padding:
+                                          const EdgeInsets.symmetric(
+                                        vertical: 15,
+                                      ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 10),
-                                OutlinedButton.icon(
-                                  onPressed:
-                                      isSaving
-                                          ? null
-                                          : clearForm,
-                                  icon: const Icon(
-                                    Icons.clear_all,
-                                  ),
-                                  label: const Text(
-                                    'CLEAR FORM',
-                                  ),
-                                  style:
-                                      OutlinedButton.styleFrom(
-                                    padding:
-                                        const EdgeInsets
-                                            .symmetric(
-                                      vertical: 15,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: clearData,
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                    ),
+                                    label: const Text(
+                                      'Clear Form',
+                                    ),
+                                    style:
+                                        OutlinedButton.styleFrom(
+                                      padding:
+                                          const EdgeInsets.symmetric(
+                                        vertical: 15,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ],
-                            );
-                          }
+                            ),
 
-                          return Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
-                            children: [
-                              ElevatedButton.icon(
-                                onPressed:
-                                    isSaving
-                                        ? null
-                                        : saveData,
-                                icon: isSaving
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child:
-                                            CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Icon(Icons.save),
-                                label: Text(
-                                  isSaving
-                                      ? 'Saving...'
-                                      : 'SAVE DATA',
-                                ),
-                                style:
-                                    ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                      const Color(0xFF173F5F),
-                                  foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                    horizontal: 30,
-                                    vertical: 15,
-                                  ),
-                                ),
+                            const SizedBox(height: 20),
+
+                            const Text(
+                              'Your information is saved locally on this device.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
                               ),
-                              const SizedBox(width: 15),
-                              OutlinedButton.icon(
-                                onPressed:
-                                    isSaving
-                                        ? null
-                                        : clearForm,
-                                icon: const Icon(
-                                  Icons.clear_all,
-                                ),
-                                label: const Text(
-                                  'CLEAR FORM',
-                                ),
-                                style:
-                                    OutlinedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                    horizontal: 25,
-                                    vertical: 15,
-                                  ),
-                                ),
+                            ),
+
+                            const SizedBox(height: 5),
+
+                            const Text(
+                              'No Firebase or online database is used.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 11,
                               ),
-                            ],
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 15),
-
-                      const Center(
-                        child: Text(
-                          'Your information will be saved securely in Firebase.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ),
     );
+  }
+
+  @override
+  void dispose() {
+    fullNameController.dispose();
+    birthDateController.dispose();
+    ageController.dispose();
+    civilStatusController.dispose();
+    nationalityController.dispose();
+    religionController.dispose();
+    emailController.dispose();
+    contactNumberController.dispose();
+    addressController.dispose();
+
+    elementaryController.dispose();
+    seniorHighSchoolController.dispose();
+    collegeController.dispose();
+    courseController.dispose();
+
+    skillsController.dispose();
+
+    positionController.dispose();
+    companyController.dispose();
+    yearsController.dispose();
+
+    certificationController.dispose();
+    signatureController.dispose();
+
+    super.dispose();
   }
 }
